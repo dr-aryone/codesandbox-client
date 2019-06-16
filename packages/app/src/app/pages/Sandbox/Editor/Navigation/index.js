@@ -2,7 +2,6 @@ import React from 'react';
 import { inject, observer } from 'mobx-react';
 
 import PlusIcon from 'react-icons/lib/go/plus';
-import ServerIcon from 'react-icons/lib/go/server';
 
 import getWorkspaceItems from 'app/store/modules/workspace/items';
 import Tooltip from '@codesandbox/common/lib/components/Tooltip';
@@ -13,6 +12,7 @@ import LiveIcon from '-!svg-react-loader!@codesandbox/common/lib/icons/live.svg'
 import FilesIcon from '-!svg-react-loader!@codesandbox/common/lib/icons/file.svg';
 import RocketIcon from '-!svg-react-loader!@codesandbox/common/lib/icons/rocket.svg';
 import ConfigurationIcon from '-!svg-react-loader!@codesandbox/common/lib/icons/cog.svg';
+import ServerIcon from './ServerIcon';
 
 import { Container, IconContainer } from './elements';
 

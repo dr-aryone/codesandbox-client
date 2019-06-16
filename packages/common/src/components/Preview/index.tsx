@@ -8,7 +8,6 @@ import {
   resetState,
 } from 'codesandbox-api';
 import debounce from 'lodash/debounce';
-import io from 'socket.io-client';
 
 import { frameUrl, host } from '../../utils/url-generator';
 import { getModulePath } from '../../sandbox/modules';
@@ -18,13 +17,11 @@ import { Spring } from 'react-spring/renderprops.cjs';
 
 import { generateFileFromSandbox } from '../../templates/configuration/package-json';
 
-import { notificationState } from '../../utils/notifications';
 import { getSandboxName } from '../../utils/get-sandbox-name';
 
 import Navigator from './Navigator';
 import { Container, StyledFrame, Loading } from './elements';
 import { Settings } from './types';
-import { NotificationStatus } from '@codesandbox/notifications';
 
 export type Props = {
   sandbox: Sandbox;
@@ -78,59 +75,9 @@ interface IModulesByPath {
   [path: string]: { path: string; code: null | string; isBinary?: boolean };
 }
 
-const getDiff = (a: IModulesByPath, b: IModulesByPath) => {
-  const diff: IModulesByPath = {};
-
-  Object.keys(b)
-    .filter(p => {
-      if (a[p]) {
-        if (a[p].code !== b[p].code) {
-          return true;
-        }
-      } else {
-        return true;
-      }
-
-      return false;
-    })
-    .forEach(p => {
-      diff[p] = {
-        code: b[p].code,
-        path: p,
-        isBinary: b[p].isBinary,
-      };
-    });
-
-  Object.keys(a).forEach(p => {
-    if (!b[p]) {
-      diff[p] = {
-        path: p,
-        code: null,
-      };
-    }
-  });
-
-  return diff;
-};
-
-function sseTerminalMessage(msg) {
-  dispatch({
-    type: 'terminal:message',
-    data: `> Sandbox Container: ${msg}\n\r`,
-  });
-}
-
 class BasePreview extends React.Component<Props, State> {
   serverPreview: boolean;
-  lastSent: {
-    sandboxId: string;
-    modules: IModulesByPath;
-  };
-
-  // $socket: SocketIOClient.Socket;
-  connectTimeout: number | undefined;
-  // indicates if the socket closing is initiated by us
-  localClose: boolean;
+  element: HTMLIFrameElement;
 
   constructor(props: Props) {
     super(props);
@@ -157,13 +104,7 @@ class BasePreview extends React.Component<Props, State> {
     // when the user navigates the iframe app, which shows the loading screen
     this.initialPath = props.initialPath;
 
-    this.initializeLastSent();
-
     if (this.serverPreview) {
-      this.connectTimeout = null;
-      this.localClose = false;
-      this.setupSSESockets();
-
       setTimeout(() => {
         // Remove screenshot after specific time, so the loading container spinner can still show
         this.setState({ showScreenshot: false });
@@ -178,13 +119,6 @@ class BasePreview extends React.Component<Props, State> {
     (window as any).openNewWindow = this.openNewWindow;
   }
 
-  initializeLastSent = () => {
-    this.lastSent = {
-      sandboxId: this.props.sandbox.id,
-      modules: this.getModulesToSend(),
-    };
-  };
-
   componentWillUpdate(nextProps: Props, nextState: State) {
     if (
       nextState.frameInitialized !== this.state.frameInitialized &&
@@ -193,159 +127,6 @@ class BasePreview extends React.Component<Props, State> {
       this.handleRefresh();
     }
   }
-
-  setupSSESockets = async () => {
-    // const hasInitialized = Boolean(this.$socket);
-    // function onTimeout(comp: BasePreview) {
-    //   comp.connectTimeout = null;
-    //   if (comp.props.setSSEManagerStatus) {
-    //     comp.props.setSSEManagerStatus('disconnected');
-    //   }
-    // }
-    // if (hasInitialized) {
-    //   this.setState({
-    //     frameInitialized: false,
-    //   });
-    //   if (this.$socket) {
-    //     this.localClose = true;
-    //     this.$socket.close();
-    //     // we need this setTimeout() for socket open() to work immediately after close()
-    //     // setTimeout(() => {
-    //     //   this.connectTimeout = window.setTimeout(() => onTimeout(this), 3000);
-    //     //   this.$socket.open();
-    //     // }, 0);
-    //   }
-    // } else {
-    // const socket = io(getSSEUrl(), {
-    //   autoConnect: false,
-    //   transports: ['websocket', 'polling'],
-    // });
-    // this.$socket = socket;
-    // if (process.env.NODE_ENV === 'development') {
-    //   (window as any).$socket = socket;
-    // }
-    // socket.on('disconnect', () => {
-    //   if (this.localClose) {
-    //     this.localClose = false;
-    //     return;
-    //   }
-    //   // if (
-    //   //   this.props.setSSEManagerStatus &&
-    //   //   this.props.managerStatus === 'connected' &&
-    //   //   this.props.containerStatus !== 'hibernated'
-    //   // ) {
-    //   //   // this.props.setSSEManagerStatus('disconnected');
-    //   //   // dispatch({ type: 'codesandbox:sse:disconnect' });
-    //   // }
-    // });
-    // socket.on('connect', async () => {
-    //   if (this.connectTimeout) {
-    //     clearTimeout(this.connectTimeout);
-    //     this.connectTimeout = null;
-    //   }
-    //   if (this.props.setSSEManagerStatus) {
-    //     this.props.setSSEManagerStatus('connected');
-    //   }
-    //   const { id } = this.props.sandbox;
-    //   const token = await retrieveSSEToken();
-    //   socket.emit('sandbox', { id, token });
-    //   sseTerminalMessage(`connected, starting sandbox ${id}...`);
-    //   socket.emit('sandbox:start');
-    // });
-    // socket.on('shell:out', ({ data, id }) => {
-    //   dispatch({
-    //     type: 'shell:out',
-    //     data,
-    //     id,
-    //   });
-    // });
-    // socket.on('shell:exit', ({ id, code, signal }) => {
-    //   dispatch({
-    //     type: 'shell:exit',
-    //     code,
-    //     signal,
-    //     id,
-    //   });
-    // });
-    // socket.on('sandbox:update', message => {
-    //   if (this.props.syncSandbox) {
-    //     this.props.syncSandbox({ updates: message.updates });
-    //   }
-    // });
-    // socket.on('sandbox:start', () => {
-    //   sseTerminalMessage(`sandbox ${this.props.sandbox.id} started.`);
-    //   if (!this.state.frameInitialized && this.props.onInitialized) {
-    //     this.disposeInitializer = this.props.onInitialized(this);
-    //   }
-    //   this.setState({
-    //     frameInitialized: true,
-    //     overlayMessage: null,
-    //   });
-    //   if (this.props.setSSEContainerStatus) {
-    //     this.props.setSSEContainerStatus('sandbox-started');
-    //   }
-    //   setTimeout(() => {
-    //     this.executeCodeImmediately(true);
-    //     this.handleRefresh();
-    //   });
-    // });
-    // socket.on('sandbox:hibernate', () => {
-    //   sseTerminalMessage(`sandbox ${this.props.sandbox.id} hibernated.`);
-    //   if (this.props.setSSEContainerStatus) {
-    //     this.props.setSSEContainerStatus('hibernated');
-    //   }
-    //   this.setState(
-    //     {
-    //       frameInitialized: false,
-    //       overlayMessage:
-    //         'The sandbox was hibernated because of inactivity. Refresh the page to restart it.',
-    //     },
-    //     () => this.$socket.close()
-    //   );
-    // });
-    // socket.on('sandbox:stop', () => {
-    //   sseTerminalMessage(`sandbox ${this.props.sandbox.id} restarting...`);
-    //   if (this.props.setSSEContainerStatus) {
-    //     this.props.setSSEContainerStatus('stopped');
-    //   }
-    //   this.setState({
-    //     frameInitialized: false,
-    //     overlayMessage: 'Restarting the sandbox...',
-    //   });
-    // });
-    // socket.on('sandbox:log', ({ data }) => {
-    //   dispatch({
-    //     type: 'terminal:message',
-    //     data,
-    //   });
-    // });
-    // socket.on('sandbox:error', ({ message, unrecoverable }) => {
-    //   sseTerminalMessage(
-    //     `sandbox ${this.props.sandbox.id} ${
-    //       unrecoverable ? 'unrecoverable ' : ''
-    //     }error "${message}"`
-    //   );
-    //   if (unrecoverable) {
-    //     this.setState(
-    //       {
-    //         frameInitialized: false,
-    //         overlayMessage:
-    //           'An unrecoverable sandbox error occurred. :-( Try refreshing the page.',
-    //         sseError: true,
-    //       },
-    //       () => this.$socket.close()
-    //     );
-    //   } else {
-    //     notificationState.addNotification({
-    //       message: `Sandbox Container: ${message}`,
-    //       status: NotificationStatus.ERROR,
-    //     });
-    //   }
-    // });
-    // this.connectTimeout = window.setTimeout(() => onTimeout(this), 3000);
-    // socket.open();
-    // }
-  };
 
   static defaultProps = {
     showNavigation: true,
@@ -363,11 +144,6 @@ class BasePreview extends React.Component<Props, State> {
     if (this.disposeInitializer) {
       this.disposeInitializer();
     }
-
-    // if (this.$socket) {
-    //   this.localClose = true;
-    //   this.$socket.close();
-    // }
   }
 
   componentDidUpdate(prevProps: Props) {
@@ -398,9 +174,6 @@ class BasePreview extends React.Component<Props, State> {
       : frameUrl(sandbox, this.props.initialPath || '');
 
     if (this.serverPreview) {
-      this.initializeLastSent();
-      this.setupSSESockets();
-
       setTimeout(() => {
         // Remove screenshot after specific time, so the loading container spinner can still show
         this.setState({ showScreenshot: false });
@@ -475,14 +248,6 @@ class BasePreview extends React.Component<Props, State> {
 
             break;
           }
-          // case 'socket:message': {
-          //   if (this.$socket) {
-          //     const { channel, type: _t, codesandbox: _c, ...message } = data;
-          //     this.$socket.emit(channel, message);
-          //   }
-
-          //   break;
-          // }
           case 'done': {
             this.setState({ showScreenshot: false });
             break;
@@ -561,18 +326,7 @@ class BasePreview extends React.Component<Props, State> {
       }
 
       const modulesToSend = this.getModulesToSend();
-      if (this.serverPreview) {
-        const diff = getDiff(this.lastSent.modules, modulesToSend);
-        if (this.props.containerStatus === 'sandbox-started') {
-          // Only mark the last modules if we're sure that the container has been able
-          // to process the last diff
-          this.lastSent.modules = modulesToSend;
-        }
-
-        if (Object.keys(diff).length > 0 && this.$socket) {
-          this.$socket.emit('sandbox:update', diff);
-        }
-      } else {
+      if (!this.serverPreview) {
         dispatch({
           type: 'compile',
           version: 3,
@@ -585,6 +339,12 @@ class BasePreview extends React.Component<Props, State> {
           hasActions: Boolean(this.props.onAction),
         });
       }
+    }
+  };
+
+  setIframeElement = (el: HTMLIFrameElement) => {
+    if (el) {
+      this.element = el;
     }
   };
 
@@ -602,9 +362,8 @@ class BasePreview extends React.Component<Props, State> {
   sendUrl = () => {
     const { urlInAddressBar } = this.state;
 
-    const el = document.getElementById('sandbox');
-    if (el) {
-      (el as HTMLIFrameElement).src = urlInAddressBar;
+    if (this.element) {
+      this.element.src = urlInAddressBar;
 
       this.setState({
         history: [urlInAddressBar],
@@ -618,9 +377,8 @@ class BasePreview extends React.Component<Props, State> {
     const { history, historyPosition, urlInAddressBar } = this.state;
     const url = history[historyPosition] || urlInAddressBar;
 
-    const el = document.getElementById('sandbox');
-    if (el) {
-      (el as HTMLIFrameElement).src =
+    if (this.element) {
+      this.element.src =
         url ||
         (this.serverPreview
           ? getSSEUrl(this.props.sandbox)
@@ -761,7 +519,7 @@ class BasePreview extends React.Component<Props, State> {
                     ? getSSEUrl(sandbox, this.initialPath)
                     : frameUrl(sandbox, this.initialPath)
                 }
-                id="sandbox"
+                ref={this.setIframeElement}
                 title={getSandboxName(sandbox)}
                 style={{
                   ...style,
