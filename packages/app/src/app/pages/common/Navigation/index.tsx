@@ -105,8 +105,17 @@ const Navigation = ({ title, searchNoInput }: Props) => {
                   style={{ position: 'relative', fontSize: '1.25rem' }}
                   onClick={open}
                 >
-                  <BellIcon height={35} />
-                  {userNotifications.unreadCount > 0 && <UnreadIcon />}
+                  <Tooltip
+                    placement="bottom"
+                    content={
+                      userNotifications.unreadCount > 0
+                        ? 'Show Notifications'
+                        : 'No Notifications'
+                    }
+                  >
+                    <BellIcon height={35} />
+                    {userNotifications.unreadCount > 0 && <UnreadIcon />}
+                  </Tooltip>
                 </Action>
               )}
             </OverlayComponent>
@@ -130,5 +139,5 @@ const Navigation = ({ title, searchNoInput }: Props) => {
       </Wrapper>
     </Row>
   );
-}
+};
 export default observer(Navigation);
