@@ -30,6 +30,7 @@ export type Props = {
   extraModules?: { [path: string]: { code: string; path: string } };
   currentModule?: Module;
   initialPath?: string;
+  url?: string;
   isInProjectView?: boolean;
   onClearErrors?: () => void;
   onAction?: (action: Object) => void;
@@ -82,9 +83,7 @@ class BasePreview extends React.Component<Props, State> {
       frameInitialized: false,
       history: [],
       historyPosition: 0,
-      urlInAddressBar: this.serverPreview
-        ? getSSEUrl(props.sandbox, props.initialPath)
-        : frameUrl(props.sandbox, props.initialPath || ''),
+      urlInAddressBar: this.currentUrl(),
       url: null,
       showScreenshot: true,
     };
@@ -117,6 +116,15 @@ class BasePreview extends React.Component<Props, State> {
       this.handleRefresh();
     }
   }
+
+  currentUrl = () => {
+    return (
+      this.props.url ||
+      (this.serverPreview
+        ? getSSEUrl(this.props.sandbox, this.props.initialPath)
+        : frameUrl(this.props.sandbox, this.props.initialPath || ''))
+    );
+  };
 
   static defaultProps = {
     showNavigation: true,
@@ -159,9 +167,7 @@ class BasePreview extends React.Component<Props, State> {
 
     resetState();
 
-    const url = this.serverPreview
-      ? getSSEUrl(sandbox, this.props.initialPath)
-      : frameUrl(sandbox, this.props.initialPath || '');
+    const url = this.currentUrl();
 
     if (this.serverPreview) {
       setTimeout(() => {
@@ -188,12 +194,7 @@ class BasePreview extends React.Component<Props, State> {
   handleMessage = (data: any, source: any) => {
     if (data && data.codesandbox) {
       if (data.type === 'initialized' && source) {
-        registerFrame(
-          source,
-          this.serverPreview
-            ? getSSEUrl(this.props.sandbox)
-            : frameUrl(this.props.sandbox)
-        );
+        registerFrame(source, this.currentUrl());
 
         if (!this.state.frameInitialized && this.props.onInitialized) {
           this.disposeInitializer = this.props.onInitialized(this);
@@ -367,11 +368,7 @@ class BasePreview extends React.Component<Props, State> {
     const url = history[historyPosition] || urlInAddressBar;
 
     if (this.element) {
-      this.element.src =
-        url ||
-        (this.serverPreview
-          ? getSSEUrl(this.props.sandbox)
-          : frameUrl(this.props.sandbox));
+      this.element.src = url || this.currentUrl();
     }
 
     this.setState({
@@ -447,9 +444,7 @@ class BasePreview extends React.Component<Props, State> {
 
     const { historyPosition, history, urlInAddressBar } = this.state;
 
-    const url =
-      urlInAddressBar ||
-      (this.serverPreview ? getSSEUrl(sandbox) : frameUrl(sandbox));
+    const url = urlInAddressBar || this.currentUrl();
 
     if (noPreview) {
       // Means that preview is open in another tab definitely
@@ -499,11 +494,7 @@ class BasePreview extends React.Component<Props, State> {
               <StyledFrame
                 sandbox="allow-forms allow-scripts allow-same-origin allow-modals allow-popups allow-presentation"
                 allow="geolocation; microphone; camera;midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor; encrypted-media"
-                src={
-                  this.serverPreview
-                    ? getSSEUrl(sandbox, this.initialPath)
-                    : frameUrl(sandbox, this.initialPath)
-                }
+                src={this.currentUrl()}
                 ref={this.setIframeElement}
                 title={getSandboxName(sandbox)}
                 style={{
